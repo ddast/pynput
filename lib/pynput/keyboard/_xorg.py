@@ -191,8 +191,6 @@ class Controller(NotifierMixin, _base.Controller):
 
         :param int keysym: The keysym to handle.
         """
-        event = Xlib.display.event.KeyPress if is_press \
-            else Xlib.display.event.KeyRelease
         keysym = self._keysym(key)
 
         # Make sure to verify that the key was resolved
@@ -201,7 +199,7 @@ class Controller(NotifierMixin, _base.Controller):
 
         # If the key has a virtual key code, use that immediately with
         # fake_input; fake input,being an X server extension, has access to more
-        # internal state that we
+        # internal state than we
         if key.vk is not None:
             with display_manager(self._display) as dm:
                 Xlib.ext.xtest.fake_input(
@@ -209,25 +207,57 @@ class Controller(NotifierMixin, _base.Controller):
                     Xlib.X.KeyPress if is_press else Xlib.X.KeyRelease,
                     dm.keysym_to_keycode(key.vk))
 
-        # Otherwise use XSendEvent; we need to use this in the general case to
-        # work around problems with keyboard layouts
+        # Otherwise send the required modifier keys and the desired key with
+        # fake_input.
         else:
             try:
-                keycode, shift_state = self.keyboard_mapping[keysym]
-                self._send_key(event, keycode, shift_state)
-
+                keycode, mod_state = self.keyboard_mapping[keysym]
+                self._send_modifier(mod_state, is_press)
+                self._send_key(keycode, is_press)
             except KeyError:
                 with self._borrow_lock:
                     keycode, index, count = self._borrows[keysym]
-                    self._send_key(
-                        event,
-                        keycode,
-                        index_to_shift(self._display, index))
+                    mod_state = index_to_shift(self._display, index)
+                    self._send_modifier(mod_state, is_press)
+                    self._send_key(keycode, is_press)
                     count += 1 if is_press else -1
                     self._borrows[keysym] = (keycode, index, count)
 
         # Notify any running listeners
         self._emit('_on_fake_event', key, is_press)
+
+    def _send_modifier(self, mod_state, is_press):
+        """Sends modifier keys.
+
+        :param int mod_mask: A mask defining which modifier keys to use.
+
+        :param bool is_press: Whether this is a press event.
+        """
+        is_press_ = Xlib.X.KeyPress if is_press else Xlib.X.KeyRelease
+        with display_manager(self._display) as dm, self.modifiers as modifiers:
+            mod_mask = mod_state | self._shift_mask(modifiers)
+            if not mod_mask:
+                return
+            mod_mapping = dm.get_modifier_mapping()
+            for mod_idx, mod_arr in enumerate(mod_mapping):
+                if mod_mask & (1 << mod_idx):
+                    for keycode in mod_arr:
+                        if keycode:
+                            Xlib.ext.xtest.fake_input(dm, is_press_, keycode)
+                            break
+
+    def _send_key(self, keycode, is_press):
+        """Sends single key event.
+
+        :param int keycode: The calculated keycode.
+
+        :param bool is_press: Whether this is a press event.
+        """
+        with display_manager(self._display) as dm:
+            Xlib.ext.xtest.fake_input(
+                dm,
+                Xlib.X.KeyPress if is_press else Xlib.X.KeyRelease,
+                keycode)
 
     def _keysym(self, key):
         """Converts a key to a *keysym*.
@@ -239,28 +269,6 @@ class Controller(NotifierMixin, _base.Controller):
             or self._resolve_normal(key) \
             or self._resolve_borrowed(key) \
             or self._resolve_borrowing(key)
-
-    def _send_key(self, event, keycode, shift_state):
-        """Sends a single keyboard event.
-
-        :param event: The *X* keyboard event.
-
-        :param int keycode: The calculated keycode.
-
-        :param int shift_state: The shift state. The actual value used is
-            :attr:`shift_state` or'd with this value.
-        """
-        with display_manager(self._display) as dm, self.modifiers as modifiers:
-            window = dm.get_input_focus().focus
-            window.send_event(event(
-                detail=keycode,
-                state=shift_state | self._shift_mask(modifiers),
-                time=0,
-                root=dm.screen().root,
-                window=window,
-                same_screen=0,
-                child=Xlib.X.NONE,
-                root_x=0, root_y=0, event_x=0, event_y=0))
 
     def _resolve_dead(self, key):
         """Tries to resolve a dead key.
