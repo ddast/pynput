@@ -123,6 +123,9 @@ class Key(enum.Enum):
     space = KeyCode.from_vk(0x31, char=' ')
     tab = KeyCode.from_vk(0x30)
     up = KeyCode.from_vk(0x7E)
+    volume_up = KeyCode.from_vk(0x48)
+    volume_down = KeyCode.from_vk(0x49)
+    volume_mute = KeyCode.from_vk(0x4a)
 
 
 class Controller(_base.Controller):

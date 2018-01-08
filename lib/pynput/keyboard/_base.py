@@ -281,6 +281,10 @@ class Key(enum.Enum):
     #: The ScrollLock key. This may be undefined for some platforms.
     scroll_lock = 0
 
+    volume_up = 0
+    volume_down = 0
+    volume_mute = 0
+
 
 class Controller(object):
     """A controller for sending virtual keyboard events to the system.

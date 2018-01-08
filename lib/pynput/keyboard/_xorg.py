@@ -140,6 +140,10 @@ class Key(enum.Enum):
     print_screen = KeyCode._from_symbol('Print')
     scroll_lock = KeyCode._from_symbol('Scroll_Lock')
 
+    Xlib.XK.load_keysym_group('xf86')
+    volume_up = KeyCode._from_symbol('XF86_AudioRaiseVolume')
+    volume_down = KeyCode._from_symbol('XF86_AudioLowerVolume')
+    volume_mute = KeyCode._from_symbol('XF86_AudioMute')
 
 class Controller(NotifierMixin, _base.Controller):
     _KeyCode = KeyCode
