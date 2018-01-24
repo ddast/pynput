@@ -316,7 +316,8 @@ class Controller(object):
         self._modifiers_lock = threading.RLock()
         self._modifiers = set()
         self._caps_lock = False
-        self._dead_key = None
+        self._dead_key_press = None
+        self._dead_key_release = None
 
         kc = self._Key
 
@@ -359,27 +360,26 @@ class Controller(object):
 
         # If we currently have a dead key pressed, join it with this key
         original = resolved
-        if self._dead_key:
+        if self._dead_key_press:
             try:
-                resolved = self._dead_key.join(resolved)
+                resolved = self._dead_key_press.join(resolved)
             except ValueError:
-                self._handle(self._dead_key, True)
-                self._handle(self._dead_key, False)
+                self._handle(self._dead_key_press, True)
 
         # If the key is a dead key, keep it for later
         if resolved.is_dead:
-            self._dead_key = resolved
+            self._dead_key_press = resolved
             return
 
         try:
             self._handle(resolved, True)
         except self.InvalidKeyException:
             if resolved != original:
-                self._handle(self._dead_key, True)
-                self._handle(self._dead_key, False)
+                self._handle(self._dead_key_press, True)
+                self._handle(self._dead_key_press, False)
                 self._handle(original, True)
 
-        self._dead_key = None
+        self._dead_key_press = None
 
     def release(self, key):
         """Releases a key.
@@ -401,11 +401,21 @@ class Controller(object):
         resolved = self._resolve(key)
         self._update_modifiers(resolved, False)
 
-        # Ignore released dead keys
+        # If we currently have a dead key pressed, join it with this key
+        if self._dead_key_release:
+            try:
+                resolved = self._dead_key_release.join(resolved)
+            except ValueError:
+                self._handle(self._dead_key_release, False)
+
+        # If the key is a dead key, keep it for later
         if resolved.is_dead:
+            self._dead_key_release = resolved
             return
 
         self._handle(resolved, False)
+
+        self._dead_key_release = None
 
     def touch(self, key, is_press):
         """Calls either :meth:`press` or :meth:`release` depending on the value
